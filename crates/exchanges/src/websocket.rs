@@ -12,7 +12,7 @@ use crate::http::TlsStream;
 use sriquant_core::{PerfTimer, nanos};
 
 use monoio::net::TcpStream;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 use url::Url;
 use base64::Engine;
 use sha1::{Sha1, Digest};
@@ -526,13 +526,17 @@ impl MonoioWebSocket {
         let close_frame = Frame::close(code, reason);
         self.send_frame(close_frame).await?;
         
-        // Wait for close response
+        // Try to wait for close response (best effort)
         match self.receive_frame().await {
             Ok(frame) if matches!(frame.header.opcode, OpCode::Close) => {
                 debug!("✅ Close handshake completed");
             }
-            _ => {
-                warn!("Close handshake not completed properly");
+            Ok(_) => {
+                debug!("Received non-close frame during close handshake");
+            }
+            Err(_) => {
+                // Connection already closed or error - this is normal during close
+                debug!("Connection terminated during close handshake (normal)");
             }
         }
 

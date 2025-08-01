@@ -364,6 +364,63 @@ impl BinanceRestClient {
         serde_json::from_value(response)
             .map_err(|e| ExchangeError::SerializationError(e.to_string()))
     }
+
+    /// Create a listen key for user data stream
+    pub async fn create_listen_key(&self) -> Result<String> {
+        let timer = PerfTimer::start("binance_create_listen_key".to_string());
+        
+        // User data stream endpoints only require API key, not signatures
+        let mut headers = HashMap::new();
+        headers.insert("X-MBX-APIKEY", self.config.api_key.as_str());
+        
+        let url = format!("{}/api/v3/userDataStream", self.config.base_url);
+        let response_text = self.make_http_request_with_headers(&url, "POST", None, headers).await?;
+        
+        let response: serde_json::Value = serde_json::from_str(&response_text)
+            .map_err(|e| ExchangeError::SerializationError(e.to_string()))?;
+        
+        let listen_key = response["listenKey"]
+            .as_str()
+            .ok_or_else(|| ExchangeError::InvalidResponse("No listen key in response".to_string()))?
+            .to_string();
+        
+        timer.log_elapsed();
+        info!("🔑 Listen key created for user data stream");
+        
+        Ok(listen_key)
+    }
+
+    /// Keep alive a user data stream listen key
+    pub async fn keepalive_listen_key(&self, listen_key: &str) -> Result<()> {
+        let timer = PerfTimer::start("binance_keepalive_listen_key".to_string());
+        
+        let mut headers = HashMap::new();
+        headers.insert("X-MBX-APIKEY", self.config.api_key.as_str());
+        
+        let url = format!("{}/api/v3/userDataStream?listenKey={}", self.config.base_url, listen_key);
+        let _response = self.make_http_request_with_headers(&url, "PUT", None, headers).await?;
+        
+        timer.log_elapsed();
+        info!("🔄 Listen key keepalive sent");
+        
+        Ok(())
+    }
+
+    /// Close a user data stream listen key
+    pub async fn close_listen_key(&self, listen_key: &str) -> Result<()> {
+        let timer = PerfTimer::start("binance_close_listen_key".to_string());
+        
+        let mut headers = HashMap::new();
+        headers.insert("X-MBX-APIKEY", self.config.api_key.as_str());
+        
+        let url = format!("{}/api/v3/userDataStream?listenKey={}", self.config.base_url, listen_key);
+        let _response = self.make_http_request_with_headers(&url, "DELETE", None, headers).await?;
+        
+        timer.log_elapsed();
+        info!("🔒 Listen key closed");
+        
+        Ok(())
+    }
     
     /// Make a GET request with timing measurement
     async fn get_request(

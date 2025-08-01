@@ -7,6 +7,7 @@ pub mod rest;
 pub mod auth;
 pub mod types;
 pub mod websocket;
+pub mod user_stream;
 pub mod connection;
 
 use crate::errors::{ExchangeError, Result};
@@ -18,6 +19,7 @@ pub use rest::{BinanceConfig, ExchangeInfo, SymbolInfo, BinanceRestClient};
 pub use auth::{BinanceCredentials, BinanceSigner};
 pub use types::*;
 pub use websocket::BinanceWebSocketClient;
+pub use user_stream::{BinanceUserStreamClient, UserDataEvent, AccountUpdateEvent, BalanceUpdateEvent, OrderUpdateEvent, BalanceInfo, TradeSide};
 pub use connection::ConnectionManager;
 
 

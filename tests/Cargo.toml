@@ -46,6 +46,10 @@ path = "examples/binance_advanced.rs"
 name = "binance_websocket"
 path = "examples/binance_websocket.rs"
 
+[[example]]
+name = "binance_user_stream"
+path = "examples/binance_user_stream.rs"
+
 # Benchmarks
 [[bench]]
 name = "performance_benchmark"

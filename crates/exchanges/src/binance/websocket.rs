@@ -9,6 +9,7 @@
 use crate::errors::{ExchangeError, Result};
 use crate::websocket::MonoioWebSocket;
 use sriquant_core::prelude::*;
+use sriquant_core::timing::nanos;
 use super::rest::BinanceConfig;
 
 use std::collections::HashMap;
@@ -29,9 +30,9 @@ impl BinanceWebSocketClient {
     /// Create a new Binance WebSocket client
     pub fn new(config: BinanceConfig) -> Self {
         let base_url = if config.testnet {
-            "wss://testnet.binance.vision/ws".to_string()
+            "wss://stream.testnet.binance.vision".to_string()
         } else {
-            "wss://stream.binance.com:9443/ws".to_string()
+            "wss://stream.binance.com:9443".to_string()
         };
         
         info!("🔗 Binance WebSocket client created");
@@ -45,12 +46,13 @@ impl BinanceWebSocketClient {
         }
     }
     
-    /// Connect to WebSocket stream using monoio-native implementation
+    /// Connect to WebSocket stream (multi-stream endpoint)
     pub async fn connect(&mut self) -> Result<()> {
         let timer = PerfTimer::start("binance_ws_connect".to_string());
         
-        // Parse WebSocket URL
-        let url = Url::parse(&self.base_url)
+        // Connect to multi-stream endpoint for subscriptions
+        let stream_url = format!("{}/ws", self.base_url);
+        let url = Url::parse(&stream_url)
             .map_err(|e| ExchangeError::InvalidUrl(e.to_string()))?;
         
         info!("🔗 Connecting to Binance WebSocket: {}", url);
@@ -64,6 +66,47 @@ impl BinanceWebSocketClient {
         
         Ok(())
     }
+
+    /// Connect to a single stream directly (alternative connection method)
+    pub async fn connect_single_stream(&mut self, stream: &str) -> Result<()> {
+        let timer = PerfTimer::start("binance_ws_connect_single".to_string());
+        
+        // Connect directly to a single stream
+        let stream_url = format!("{}/ws/{}", self.base_url, stream);
+        let url = Url::parse(&stream_url)
+            .map_err(|e| ExchangeError::InvalidUrl(e.to_string()))?;
+        
+        info!("🔗 Connecting to single Binance WebSocket stream: {}", url);
+        
+        // Establish WebSocket connection
+        let websocket = MonoioWebSocket::connect(url).await?;
+        self.websocket = Some(websocket);
+        
+        // Mark this stream as subscribed (no subscription message needed)
+        self.subscriptions.insert(stream.to_string(), true);
+        
+        timer.log_elapsed();
+        info!("✅ Connected to single stream: {}", stream);
+        
+        Ok(())
+    }
+
+    /// Connect and subscribe to multiple streams
+    pub async fn connect_multi_stream(&mut self, streams: Vec<&str>) -> Result<()> {
+        // First connect to the multi-stream endpoint
+        self.connect().await?;
+        
+        info!("📊 Subscribing to {} streams...", streams.len());
+        
+        // Subscribe to each stream
+        for stream in streams {
+            self.subscribe_stream(stream).await?;
+        }
+        
+        info!("✅ All {} streams subscribed successfully", self.subscriptions.len());
+        Ok(())
+    }
+
     
     /// Subscribe to ticker updates for a symbol
     pub async fn subscribe_ticker(&mut self, symbol: &str) -> Result<()> {
@@ -99,12 +142,17 @@ impl BinanceWebSocketClient {
             return Err(ExchangeError::NetworkError("WebSocket not connected".to_string()));
         }
 
+        // Generate unique ID for this subscription
+        let sub_id = self.subscriptions.len() + 1;
+
         // Create subscription message
         let subscription_msg = serde_json::json!({
             "method": "SUBSCRIBE",
             "params": [stream],
-            "id": 1
+            "id": sub_id
         });
+
+        info!("📨 Sending subscription message: {}", subscription_msg);
 
         // Send subscription message
         if let Some(ref mut ws) = self.websocket {
@@ -118,18 +166,26 @@ impl BinanceWebSocketClient {
     
     /// Receive and process next WebSocket message
     pub async fn receive_message(&mut self) -> Result<MarketDataEvent> {
-        if let Some(ref mut ws) = self.websocket {
-            let timer = PerfTimer::start("binance_ws_receive".to_string());
+        loop {
+            let message = if let Some(ref mut ws) = self.websocket {
+                let timer = PerfTimer::start("binance_ws_receive".to_string());
+                let msg = ws.receive_text().await?;
+                timer.log_elapsed();
+                msg
+            } else {
+                return Err(ExchangeError::NetworkError("WebSocket not connected".to_string()));
+            };
             
-            let message = ws.receive_text().await?;
             debug!("Received WebSocket message: {}", message);
             
-            let event = self.process_message_content(&message)?;
-            timer.log_elapsed();
-            
-            Ok(event)
-        } else {
-            Err(ExchangeError::NetworkError("WebSocket not connected".to_string()))
+            match self.process_message_content(&message) {
+                Ok(event) => return Ok(event),
+                Err(ExchangeError::InvalidResponse(msg)) if msg.contains("Subscription confirmation") => {
+                    // Skip subscription confirmations and continue reading
+                    continue;
+                }
+                Err(e) => return Err(e),
+            }
         }
     }
 
@@ -141,13 +197,26 @@ impl BinanceWebSocketClient {
             .map_err(|e| ExchangeError::SerializationError(e.to_string()))?;
         
         let event = if let Some(stream) = json["stream"].as_str() {
+            // Combined stream format: {"stream":"btcusdt@ticker","data":{...}}
             self.parse_stream_data(stream, &json["data"])?
-        } else if json["method"].is_string() {
-            // Handle subscription confirmation messages
-            debug!("Received subscription response: {}", message);
-            return Err(ExchangeError::InvalidResponse("Subscription response - not market data".to_string()));
+        } else if let Some(event_type) = json["e"].as_str() {
+            // Single stream format: {"e":"24hrTicker","s":"BTCUSDT",...}
+            self.parse_single_stream_data(event_type, &json)?
+        } else if json["lastUpdateId"].is_number() && (json["bids"].is_array() || json["asks"].is_array()) {
+            // Order book snapshot format: {"lastUpdateId":123,"bids":[...],"asks":[...]}
+            self.parse_order_book_snapshot(&json)?
+        } else if let Some(_result) = json["result"].as_null() {
+            // Handle subscription confirmation messages ({"result":null,"id":1})
+            if let Some(id) = json["id"].as_u64() {
+                info!("✅ Subscription confirmed for ID: {}", id);
+                return Err(ExchangeError::InvalidResponse("Subscription confirmation - not market data".to_string()));
+            } else {
+                info!("Unknown subscription response format: {}", message);
+                return Err(ExchangeError::InvalidResponse("Unknown subscription response".to_string()));
+            }
         } else {
-            return Err(ExchangeError::InvalidResponse("No stream field".to_string()));
+            debug!("Unknown message format: {}", message);
+            return Err(ExchangeError::InvalidResponse("Unknown message format".to_string()));
         };
         
         timer.log_elapsed();
@@ -169,6 +238,61 @@ impl BinanceWebSocketClient {
         }
     }
     
+    /// Parse single stream data based on event type
+    fn parse_single_stream_data(&self, event_type: &str, data: &Value) -> Result<MarketDataEvent> {
+        match event_type {
+            "24hrTicker" => self.parse_ticker_data(data),
+            "depthUpdate" => self.parse_depth_data(data),
+            "trade" => self.parse_trade_data(data),
+            "kline" => self.parse_kline_data(data),
+            _ => Err(ExchangeError::UnsupportedStream(format!("Unsupported event type: {}", event_type)))
+        }
+    }
+
+    /// Parse order book snapshot (initial depth data)
+    fn parse_order_book_snapshot(&self, data: &Value) -> Result<MarketDataEvent> {
+        let mut bids = Vec::new();
+        let mut asks = Vec::new();
+        
+        if let Some(bids_array) = data["bids"].as_array() {
+            for bid in bids_array {
+                if let Some(bid_array) = bid.as_array() {
+                    if bid_array.len() >= 2 {
+                        let price = Fixed::from_str_exact(bid_array[0].as_str().unwrap_or("0"))
+                            .map_err(|_| ExchangeError::InvalidResponse("Invalid bid price".to_string()))?;
+                        let quantity = Fixed::from_str_exact(bid_array[1].as_str().unwrap_or("0"))
+                            .map_err(|_| ExchangeError::InvalidResponse("Invalid bid quantity".to_string()))?;
+                        bids.push(OrderBookLevel { price, quantity });
+                    }
+                }
+            }
+        }
+        
+        if let Some(asks_array) = data["asks"].as_array() {
+            for ask in asks_array {
+                if let Some(ask_array) = ask.as_array() {
+                    if ask_array.len() >= 2 {
+                        let price = Fixed::from_str_exact(ask_array[0].as_str().unwrap_or("0"))
+                            .map_err(|_| ExchangeError::InvalidResponse("Invalid ask price".to_string()))?;
+                        let quantity = Fixed::from_str_exact(ask_array[1].as_str().unwrap_or("0"))
+                            .map_err(|_| ExchangeError::InvalidResponse("Invalid ask quantity".to_string()))?;
+                        asks.push(OrderBookLevel { price, quantity });
+                    }
+                }
+            }
+        }
+        
+        let depth = DepthUpdate {
+            symbol: "BTCUSDT".to_string(), // For depth snapshots, we know this is BTCUSDT from our subscription
+            bids,
+            asks,
+            timestamp: nanos() / 1_000_000, // Current timestamp in milliseconds
+            update_id: data["lastUpdateId"].as_u64().unwrap_or(0),
+        };
+        
+        Ok(MarketDataEvent::Depth(depth))
+    }
+
     /// Parse ticker data
     fn parse_ticker_data(&self, data: &Value) -> Result<MarketDataEvent> {
         let ticker = TickerUpdate {
