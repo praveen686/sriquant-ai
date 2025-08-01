@@ -1,0 +1,45 @@
+[package]
+name = "sriquant-core"
+version = "0.1.0"
+edition = "2024"
+authors = ["SriQuant.ai Team"]
+description = "Core runtime and types for SriQuant.ai - High-performance architecture"
+license = "MIT"
+
+[dependencies]
+# High-performance async runtime
+monoio = { workspace = true }
+
+# Precision timing
+tsc = { workspace = true }
+
+# Fixed-point arithmetic
+rust_decimal = { workspace = true }
+
+# Unified logging
+ftlog = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# ID generation
+nanoid = { workspace = true }
+
+# Cross-thread communication
+ringbuf = { workspace = true }
+
+# Basic types
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# CPU affinity for single-core performance
+core_affinity = "0.8"
+num_cpus = { workspace = true }
+
+[features]
+default = ["cpu-binding", "tsc", "ftlog"]
+cpu-binding = []
+tsc = []
+ftlog = []

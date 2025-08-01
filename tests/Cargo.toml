@@ -1,0 +1,65 @@
+[package]
+name = "sriquant-tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# SriQuant.ai components
+sriquant-core = { path = "../crates/core" }
+sriquant-exchanges = { path = "../crates/exchanges" }
+
+# Async runtime (monoio only)
+monoio = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+
+# Environment loading
+dotenv = { workspace = true }
+
+# Serialization
+serde_json = { workspace = true }
+
+# Testing frameworks (Rust native - better than gtest)
+tokio-test = "0.4"
+rstest = "0.18"           # Parameterized tests like gtest TEST_P
+proptest = "1.0"          # Property-based testing
+criterion = "0.5"         # Benchmarking (better than gtest benchmarks)
+mockall = "0.11"          # Mocking framework
+serial_test = "3.0"       # Sequential test execution
+
+# Binance Integration Tests
+[[bin]]
+name = "test_credentials"
+path = "binance/test_credentials.rs"
+
+# Basic Functionality Demo
+[[bin]]
+name = "binance_basic"
+path = "examples/binance_basic.rs"
+
+# Advanced Trading Demo
+[[bin]]
+name = "binance_advanced"
+path = "examples/binance_advanced.rs"
+
+# Performance Benchmarks
+[[bin]]
+name = "performance_benchmark"
+path = "benchmarks/performance_benchmark.rs"
+
+# TLS Testing
+[[bin]]
+name = "test_tls"
+path = "tls/test_tls.rs"
+
+
+# Unit Tests (gtest-style)
+[[bin]]
+name = "unit_tests"
+path = "unit/gtest_style_tests.rs"

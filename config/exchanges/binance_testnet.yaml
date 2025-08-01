@@ -1,0 +1,71 @@
+binance:
+  environment: "testnet"
+  
+  connection:
+    rest_url: "https://testnet.binance.vision"
+    stream_url: "wss://stream.testnet.binance.vision/ws"
+    timeout_ms: 5000
+    max_retries: 3
+    keepalive_interval_ms: 30000
+    tcp_nodelay: true
+    connection_pool_size: 10
+  
+  authentication:
+    api_key: "${BINANCE_API_KEY}"
+    secret_key: "${BINANCE_SECRET_KEY}"
+    receive_window_ms: 5000
+    timestamp_offset_ms: 0
+    signature_version: "2"
+  
+  trading:
+    order_prefix: "SVQ_TEST"
+    max_orders_per_symbol: 10
+    default_time_in_force: "GTC"
+    position_limits:
+      max_notional: 10000.0
+      max_contracts: 100
+      max_symbols: 10
+      concentration_limits: {}
+    order_types:
+      - "MARKET"
+      - "LIMIT"
+      - "STOP_LOSS"
+      - "STOP_LOSS_LIMIT"
+  
+  rate_limits:
+    orders_per_second: 5
+    api_calls_per_minute: 600
+    weight_limit: 6000
+    burst_allowance: 3
+    backoff_multiplier: 1.5
+    max_backoff_ms: 60000
+  
+  market_data:
+    symbols:
+      - "BTCUSDT"
+      - "ETHUSDT"
+      - "ADAUSDT"
+    streams:
+      - "trade"
+      - "depth@0ms"
+    depth_levels: 20
+    buffer_size: 1000
+    batch_processing: true
+    snapshot_interval_ms: 1000
+  
+  risk:
+    enable_pretrade_checks: true
+    enable_realtime_monitoring: true
+    max_daily_loss: 1000.0
+    position_concentration_limit: 0.5
+    stop_loss_percentage: 0.05
+    emergency_stop_conditions:
+      - "connection_lost"
+      - "risk_breach"
+      - "manual_override"
+  
+  features:
+    - "spot_trading"
+    - "market_data"
+    - "real_time_streaming"
+    - "user_data_stream"

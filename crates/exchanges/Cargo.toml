@@ -1,0 +1,56 @@
+[package]
+name = "sriquant-exchanges"
+version = "0.1.0"
+edition = "2024"
+authors = ["SriQuant.ai Team"]
+description = "Exchange integrations for SriQuant.ai with high-performance architecture"
+license = "MIT"
+
+[dependencies]
+# Core SriQuant
+sriquant-core = { path = "../core" }
+
+# High-performance async (monoio only)
+monoio = { workspace = true }
+flume = "0.11"
+
+# TLS support for monoio-native HTTPS
+rustls = "0.22"
+webpki-roots = "0.26"
+
+# TODO: Add monoio-native WebSocket support
+# Future: Implement native WebSocket client using monoio's TCP streams
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Crypto for API signing and WebSocket handshake
+sha1 = "0.10"
+sha2 = { workspace = true }
+hmac = { workspace = true }
+base64 = { workspace = true }
+hex = "0.4"
+
+# URL building and encoding
+url = { workspace = true }
+urlencoding = "2.1"
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Async traits
+async-trait = "0.1"
+
+# Time
+chrono = { workspace = true }
+
+[features]
+default = ["binance", "spot", "futures"]
+binance = []
+spot = []
+futures = []

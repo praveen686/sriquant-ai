@@ -1,0 +1,61 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/core",
+    "crates/exchanges", 
+    "examples/rust-examples",
+    "tests",
+]
+
+[workspace.dependencies]
+# High-performance async runtime (monoio only)
+monoio = { version = "0.2", features = ["sync"] }
+
+# Precision timing  
+tsc = "0.1"
+
+# Fixed-point arithmetic
+rust_decimal = { version = "1.33", features = ["serde"] }
+
+# Unified logging
+ftlog = "0.2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# ID generation
+nanoid = "0.4"
+
+# Cross-thread communication
+ringbuf = "0.3"
+
+# Serialization and types
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Crypto and auth
+sha2 = "0.10"
+hmac = "0.12"
+base64 = "0.21"
+
+# Core utils
+num_cpus = "1.16"
+url = "2.5"
+
+# Environment variable loading
+dotenv = "0.15"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+# CPU-specific optimizations for high-frequency trading
+
+[profile.dev]
+opt-level = 1
+debug = true

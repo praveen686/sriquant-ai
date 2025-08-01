@@ -1,0 +1,89 @@
+binance:
+  environment: "production"
+  
+  connection:
+    rest_url: "https://api.binance.com"
+    stream_url: "wss://stream.binance.com:9443/stream"
+    timeout_ms: 3000
+    max_retries: 5
+    keepalive_interval_ms: 30000
+    tcp_nodelay: true
+    connection_pool_size: 20
+  
+  authentication:
+    api_key: "${BINANCE_API_KEY}"
+    secret_key: "${BINANCE_SECRET_KEY}"
+    receive_window_ms: 5000
+    timestamp_offset_ms: 0
+    signature_version: "2"
+  
+  trading:
+    order_prefix: "SVQ"
+    max_orders_per_symbol: 50
+    default_time_in_force: "GTC"
+    position_limits:
+      max_notional: 1000000.0
+      max_contracts: 10000
+      max_symbols: 100
+      concentration_limits:
+        "BTCUSDT": 0.3
+        "ETHUSDT": 0.3
+        "ADAUSDT": 0.2
+    order_types:
+      - "MARKET"
+      - "LIMIT"
+      - "STOP_LOSS"
+      - "STOP_LOSS_LIMIT"
+      - "TAKE_PROFIT"
+      - "TAKE_PROFIT_LIMIT"
+      - "LIMIT_MAKER"
+  
+  rate_limits:
+    orders_per_second: 10
+    api_calls_per_minute: 1200
+    weight_limit: 6000
+    burst_allowance: 5
+    backoff_multiplier: 2.0
+    max_backoff_ms: 120000
+  
+  market_data:
+    symbols:
+      - "BTCUSDT"
+      - "ETHUSDT"
+      - "ADAUSDT"
+      - "BNBUSDT"
+      - "XRPUSDT"
+      - "DOTUSDT"
+      - "LINKUSDT"
+      - "LTCUSDT"
+      - "BCHUSDT"
+      - "XLMUSDT"
+    streams:
+      - "trade"
+      - "depth@0ms"
+      - "ticker"
+    depth_levels: 20
+    buffer_size: 5000
+    batch_processing: true
+    snapshot_interval_ms: 500
+  
+  risk:
+    enable_pretrade_checks: true
+    enable_realtime_monitoring: true
+    max_daily_loss: 50000.0
+    position_concentration_limit: 0.3
+    stop_loss_percentage: 0.02
+    emergency_stop_conditions:
+      - "connection_lost"
+      - "risk_breach"
+      - "manual_override"
+      - "daily_loss_limit"
+      - "position_limit_breach"
+  
+  features:
+    - "spot_trading"
+    - "market_data"
+    - "real_time_streaming"
+    - "user_data_stream"
+    - "advanced_orders"
+    - "risk_management"
