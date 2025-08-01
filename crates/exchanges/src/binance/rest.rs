@@ -306,9 +306,10 @@ impl BinanceRestClient {
     pub async fn cancel_order(&self, symbol: &str, order_id: u64) -> Result<CancelOrderResponse> {
         let endpoint = "/api/v3/order";
         
+        let order_id_str = order_id.to_string();
         let mut params = HashMap::new();
         params.insert("symbol", symbol);
-        params.insert("orderId", &order_id.to_string());
+        params.insert("orderId", &order_id_str);
         
         let response = self.signed_request(endpoint, "DELETE", Some(params)).await?;
         
@@ -320,9 +321,10 @@ impl BinanceRestClient {
     pub async fn query_order(&self, symbol: &str, order_id: u64) -> Result<QueryOrderResponse> {
         let endpoint = "/api/v3/order";
         
+        let order_id_str = order_id.to_string();
         let mut params = HashMap::new();
         params.insert("symbol", symbol);
-        params.insert("orderId", &order_id.to_string());
+        params.insert("orderId", &order_id_str);
         
         let response = self.signed_request(endpoint, "GET", Some(params)).await?;
         
@@ -352,8 +354,9 @@ impl BinanceRestClient {
         let mut params = HashMap::new();
         params.insert("symbol", symbol);
         
-        if let Some(l) = limit {
-            params.insert("limit", &l.to_string());
+        let limit_str = limit.map(|l| l.to_string());
+        if let Some(ref l) = limit_str {
+            params.insert("limit", l);
         }
         
         let response = self.signed_request(endpoint, "GET", Some(params)).await?;
