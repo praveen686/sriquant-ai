@@ -42,6 +42,10 @@ path = "examples/binance_basic.rs"
 name = "binance_advanced"
 path = "examples/binance_advanced.rs"
 
+[[example]]
+name = "binance_websocket"
+path = "examples/binance_websocket.rs"
+
 # Benchmarks
 [[bench]]
 name = "performance_benchmark"
