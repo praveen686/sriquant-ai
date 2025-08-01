@@ -1761,19 +1761,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust-examples"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "dotenv",
- "monoio",
- "sriquant-core",
- "sriquant-exchanges",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "rust_decimal"
 version = "1.37.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

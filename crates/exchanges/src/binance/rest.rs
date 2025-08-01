@@ -270,6 +270,97 @@ impl BinanceRestClient {
         let _response = self.signed_request(endpoint, "POST", Some(params)).await?;
         Ok(())
     }
+
+    /// Place a new order
+    pub async fn new_order(&self, order_params: &TestOrderParams<'_>) -> Result<NewOrderResponse> {
+        let endpoint = "/api/v3/order";
+        
+        let mut params = HashMap::new();
+        params.insert("symbol", order_params.symbol);
+        params.insert("side", order_params.side);
+        params.insert("type", order_params.order_type);
+        
+        if let Some(q) = order_params.quantity {
+            params.insert("quantity", q);
+        }
+        if let Some(p) = order_params.price {
+            params.insert("price", p);
+        }
+        if let Some(tif) = order_params.time_in_force {
+            params.insert("timeInForce", tif);
+        }
+        if let Some(sp) = order_params.stop_price {
+            params.insert("stopPrice", sp);
+        }
+        if let Some(iq) = order_params.iceberg_qty {
+            params.insert("icebergQty", iq);
+        }
+        
+        let response = self.signed_request(endpoint, "POST", Some(params)).await?;
+        
+        serde_json::from_value(response)
+            .map_err(|e| ExchangeError::SerializationError(e.to_string()))
+    }
+
+    /// Cancel an existing order
+    pub async fn cancel_order(&self, symbol: &str, order_id: u64) -> Result<CancelOrderResponse> {
+        let endpoint = "/api/v3/order";
+        
+        let mut params = HashMap::new();
+        params.insert("symbol", symbol);
+        params.insert("orderId", &order_id.to_string());
+        
+        let response = self.signed_request(endpoint, "DELETE", Some(params)).await?;
+        
+        serde_json::from_value(response)
+            .map_err(|e| ExchangeError::SerializationError(e.to_string()))
+    }
+
+    /// Query order status
+    pub async fn query_order(&self, symbol: &str, order_id: u64) -> Result<QueryOrderResponse> {
+        let endpoint = "/api/v3/order";
+        
+        let mut params = HashMap::new();
+        params.insert("symbol", symbol);
+        params.insert("orderId", &order_id.to_string());
+        
+        let response = self.signed_request(endpoint, "GET", Some(params)).await?;
+        
+        serde_json::from_value(response)
+            .map_err(|e| ExchangeError::SerializationError(e.to_string()))
+    }
+
+    /// Get all open orders for a symbol
+    pub async fn open_orders(&self, symbol: Option<&str>) -> Result<Vec<QueryOrderResponse>> {
+        let endpoint = "/api/v3/openOrders";
+        
+        let mut params = HashMap::new();
+        if let Some(s) = symbol {
+            params.insert("symbol", s);
+        }
+        
+        let response = self.signed_request(endpoint, "GET", Some(params)).await?;
+        
+        serde_json::from_value(response)
+            .map_err(|e| ExchangeError::SerializationError(e.to_string()))
+    }
+
+    /// Get trade history for a symbol
+    pub async fn my_trades(&self, symbol: &str, limit: Option<u32>) -> Result<Vec<MyTradeResponse>> {
+        let endpoint = "/api/v3/myTrades";
+        
+        let mut params = HashMap::new();
+        params.insert("symbol", symbol);
+        
+        if let Some(l) = limit {
+            params.insert("limit", &l.to_string());
+        }
+        
+        let response = self.signed_request(endpoint, "GET", Some(params)).await?;
+        
+        serde_json::from_value(response)
+            .map_err(|e| ExchangeError::SerializationError(e.to_string()))
+    }
     
     /// Make a GET request with timing measurement
     async fn get_request(
@@ -498,6 +589,121 @@ pub struct Balance {
 pub struct PriceTicker {
     pub symbol: String,
     pub price: String,
+}
+
+/// New order response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NewOrderResponse {
+    pub symbol: String,
+    #[serde(rename = "orderId")]
+    pub order_id: u64,
+    #[serde(rename = "orderListId")]
+    pub order_list_id: i32,
+    #[serde(rename = "clientOrderId")]
+    pub client_order_id: String,
+    #[serde(rename = "transactTime")]
+    pub transact_time: u64,
+    pub price: String,
+    #[serde(rename = "origQty")]
+    pub orig_qty: String,
+    #[serde(rename = "executedQty")]
+    pub executed_qty: String,
+    #[serde(rename = "cummulativeQuoteQty")]
+    pub cumulative_quote_qty: String,
+    pub status: String,
+    #[serde(rename = "timeInForce")]
+    pub time_in_force: String,
+    #[serde(rename = "type")]
+    pub order_type: String,
+    pub side: String,
+}
+
+/// Cancel order response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CancelOrderResponse {
+    pub symbol: String,
+    #[serde(rename = "origClientOrderId")]
+    pub orig_client_order_id: String,
+    #[serde(rename = "orderId")]
+    pub order_id: u64,
+    #[serde(rename = "orderListId")]
+    pub order_list_id: i32,
+    #[serde(rename = "clientOrderId")]
+    pub client_order_id: String,
+    pub price: String,
+    #[serde(rename = "origQty")]
+    pub orig_qty: String,
+    #[serde(rename = "executedQty")]
+    pub executed_qty: String,
+    #[serde(rename = "cummulativeQuoteQty")]
+    pub cumulative_quote_qty: String,
+    pub status: String,
+    #[serde(rename = "timeInForce")]
+    pub time_in_force: String,
+    #[serde(rename = "type")]
+    pub order_type: String,
+    pub side: String,
+}
+
+/// Query order response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QueryOrderResponse {
+    pub symbol: String,
+    #[serde(rename = "orderId")]
+    pub order_id: u64,
+    #[serde(rename = "orderListId")]
+    pub order_list_id: i32,
+    #[serde(rename = "clientOrderId")]
+    pub client_order_id: String,
+    pub price: String,
+    #[serde(rename = "origQty")]
+    pub orig_qty: String,
+    #[serde(rename = "executedQty")]
+    pub executed_qty: String,
+    #[serde(rename = "cummulativeQuoteQty")]
+    pub cumulative_quote_qty: String,
+    pub status: String,
+    #[serde(rename = "timeInForce")]
+    pub time_in_force: String,
+    #[serde(rename = "type")]
+    pub order_type: String,
+    pub side: String,
+    #[serde(rename = "stopPrice")]
+    pub stop_price: String,
+    #[serde(rename = "icebergQty")]
+    pub iceberg_qty: String,
+    pub time: u64,
+    #[serde(rename = "updateTime")]
+    pub update_time: u64,
+    #[serde(rename = "isWorking")]
+    pub is_working: bool,
+    #[serde(rename = "origQuoteOrderQty")]
+    pub orig_quote_order_qty: String,
+}
+
+/// My trades response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MyTradeResponse {
+    pub symbol: String,
+    pub id: u64,
+    #[serde(rename = "orderId")]
+    pub order_id: u64,
+    #[serde(rename = "orderListId")]
+    pub order_list_id: i32,
+    pub price: String,
+    pub qty: String,
+    #[serde(rename = "quoteQty")]
+    pub quote_qty: String,
+    pub commission: String,
+    #[serde(rename = "commissionAsset")]
+    pub commission_asset: String,
+    pub time: u64,
+    #[serde(rename = "isBuyer")]
+    pub is_buyer: bool,
+    #[serde(rename = "isMaker")]
+    pub is_maker: bool,
+    #[serde(rename = "isBestMatch")]
+    pub is_best_match: bool,
 }
 
 #[cfg(test)]

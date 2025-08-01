@@ -33,33 +33,26 @@ criterion = "0.5"         # Benchmarking (better than gtest benchmarks)
 mockall = "0.11"          # Mocking framework
 serial_test = "3.0"       # Sequential test execution
 
-# Binance Integration Tests
+# Examples - runnable demos
+[[example]]
+name = "binance_basic"
+path = "examples/binance_basic.rs"
+
+[[example]]
+name = "binance_advanced"
+path = "examples/binance_advanced.rs"
+
+# Benchmarks
+[[bench]]
+name = "performance_benchmark"
+path = "benchmarks/performance_benchmark.rs"
+harness = false
+
+# Integration test binaries
 [[bin]]
 name = "test_credentials"
 path = "binance/test_credentials.rs"
 
-# Basic Functionality Demo
-[[bin]]
-name = "binance_basic"
-path = "examples/binance_basic.rs"
-
-# Advanced Trading Demo
-[[bin]]
-name = "binance_advanced"
-path = "examples/binance_advanced.rs"
-
-# Performance Benchmarks
-[[bin]]
-name = "performance_benchmark"
-path = "benchmarks/performance_benchmark.rs"
-
-# TLS Testing
 [[bin]]
 name = "test_tls"
 path = "tls/test_tls.rs"
-
-
-# Unit Tests (gtest-style)
-[[bin]]
-name = "unit_tests"
-path = "unit/gtest_style_tests.rs"
