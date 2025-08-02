@@ -63,20 +63,52 @@ let client = BinanceRestClient::new(config).await?;
 
 #### Private Endpoints (Authentication Required)
 - `get_account_info()` - Get account information
-- `new_order(params)` - Place a new order
+- `new_order(params)` - Place a new order (low-level)
+- `place_order(symbol, side, type, qty, price)` - Place a new order (simplified)
 - `test_new_order(params)` - Test order placement (no execution)
 - `cancel_order(symbol, order_id)` - Cancel an order
 - `query_order(symbol, order_id)` - Query order status
 - `open_orders(symbol)` - Get open orders
 - `my_trades(symbol, limit)` - Get account trades
+- `get_all_orders(symbol, limit, start_time, end_time)` - Get all orders history
+- `get_order_trades(symbol, order_id)` - Get trades for a specific order
+- `get_24hr_ticker(symbol)` - Get 24hr ticker statistics (alias for ticker_24hr)
+- `get_klines(symbol, interval, start_time, end_time, limit)` - Get historical candlestick data
 
 #### User Stream Management
 - `create_listen_key()` - Create a listen key for user streams
 - `keepalive_listen_key(listen_key)` - Extend listen key validity
 - `close_listen_key(listen_key)` - Close user stream
 
-### Order Placement Example
+### Order Placement Examples
 
+#### Using the simplified API
+```rust
+use sriquant_exchanges::binance::{BinanceRestClient, BinanceConfig};
+use sriquant_exchanges::types::{OrderSide, OrderType};
+use sriquant_core::prelude::Fixed;
+
+// Place a limit order
+let order = client.place_order(
+    "BTCUSDT",
+    OrderSide::Buy,
+    OrderType::Limit,
+    Fixed::from_str_exact("0.001")?,     // 0.001 BTC
+    Some(Fixed::from_str_exact("50000.00")?), // $50,000 per BTC
+).await?;
+println!("Order placed: ID={}", order.order_id);
+
+// Place a market order
+let order = client.place_order(
+    "BTCUSDT",
+    OrderSide::Sell,
+    OrderType::Market,
+    Fixed::from_str_exact("0.001")?,
+    None, // No price needed for market orders
+).await?;
+```
+
+#### Using the low-level API
 ```rust
 use sriquant_exchanges::binance::rest::TestOrderParams;
 
@@ -95,6 +127,44 @@ let order_params = TestOrderParams {
 // Place order
 let order = client.new_order(&order_params).await?;
 println!("Order placed: ID={}", order.order_id);
+```
+
+### Order History and Trades
+
+```rust
+// Get all orders for the last 24 hours
+let start_time = nanos() / 1_000_000 - 24 * 60 * 60 * 1000;
+let orders = client.get_all_orders("BTCUSDT", Some(100), Some(start_time), None).await?;
+for order in orders {
+    println!("Order {}: {} {} @ {} - Status: {}", 
+        order.order_id, order.side, order.orig_qty, order.price, order.status);
+}
+
+// Get trades for a specific order
+let trades = client.get_order_trades("BTCUSDT", order_id).await?;
+for trade in trades {
+    println!("Trade {}: {} @ {} - Fee: {} {}", 
+        trade.id, trade.qty, trade.price, trade.commission, trade.commission_asset);
+}
+```
+
+### Market Data
+
+```rust
+// Get 24hr ticker statistics
+let ticker = client.get_24hr_ticker("BTCUSDT").await?;
+println!("BTC Price: {} Change: {}% Volume: {} BTC",
+    ticker.last_price, ticker.price_change_percent, ticker.volume);
+println!("High: {} Low: {} VWAP: {}",
+    ticker.high_price, ticker.low_price, ticker.weighted_avg_price);
+
+// Get historical candlestick data
+let klines = client.get_klines("BTCUSDT", "1h", None, None, Some(24)).await?;
+for kline in klines {
+    let (open, high, low, close, volume) = kline.ohlcv()?;
+    println!("Time: {} O:{} H:{} L:{} C:{} V:{}", 
+        kline.open_time, open, high, low, close, volume);
+}
 ```
 
 ## WebSocket Market Data

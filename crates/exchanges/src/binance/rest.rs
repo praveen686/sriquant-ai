@@ -189,6 +189,26 @@ impl BinanceRestClient {
             .map_err(|e| ExchangeError::SerializationError(e.to_string()))
     }
     
+    /// Alias for ticker_24hr() - Get 24hr ticker statistics
+    /// 
+    /// Returns comprehensive market data including:
+    /// - Price change and percentage
+    /// - High, low, open, close prices
+    /// - Volume in base and quote currency
+    /// - Weighted average price
+    /// - Best bid/ask prices and quantities
+    /// - Number of trades
+    /// 
+    /// # Example
+    /// ```rust
+    /// let ticker = client.get_24hr_ticker("BTCUSDT").await?;
+    /// println!("24hr change: {}% Volume: {} BTC",
+    ///     ticker.price_change_percent, ticker.volume);
+    /// ```
+    pub async fn get_24hr_ticker(&self, symbol: &str) -> Result<Ticker24hr> {
+        self.ticker_24hr(symbol).await
+    }
+    
     /// Get order book for a symbol
     pub async fn order_book(&self, symbol: &str, limit: Option<u32>) -> Result<OrderBookResponse> {
         let endpoint = "/api/v3/depth";
@@ -302,6 +322,71 @@ impl BinanceRestClient {
             .map_err(|e| ExchangeError::SerializationError(e.to_string()))
     }
 
+    /// Simplified order placement using Fixed types
+    /// 
+    /// # Arguments
+    /// * `symbol` - Trading pair (e.g., "BTCUSDT")
+    /// * `side` - Buy or Sell
+    /// * `order_type` - Market, Limit, etc.
+    /// * `quantity` - Order quantity as Fixed
+    /// * `price` - Order price as Fixed (required for limit orders)
+    /// 
+    /// # Example
+    /// ```rust
+    /// let order = client.place_order(
+    ///     "BTCUSDT",
+    ///     OrderSide::Buy,
+    ///     OrderType::Limit,
+    ///     Fixed::from_str_exact("0.001")?,
+    ///     Some(Fixed::from_str_exact("50000.00")?),
+    /// ).await?;
+    /// ```
+    pub async fn place_order(
+        &self,
+        symbol: &str,
+        side: crate::types::OrderSide,
+        order_type: crate::types::OrderType,
+        quantity: Fixed,
+        price: Option<Fixed>,
+    ) -> Result<NewOrderResponse> {
+        // Convert to string representations
+        let side_str = match side {
+            crate::types::OrderSide::Buy => "BUY",
+            crate::types::OrderSide::Sell => "SELL",
+        };
+        
+        let order_type_str = match order_type {
+            crate::types::OrderType::Market => "MARKET",
+            crate::types::OrderType::Limit => "LIMIT",
+            crate::types::OrderType::StopLoss => "STOP_LOSS",
+            crate::types::OrderType::StopLossLimit => "STOP_LOSS_LIMIT",
+        };
+        
+        // Convert Fixed to string
+        let qty_str = quantity.to_string();
+        let price_str = price.map(|p| p.to_string());
+        
+        // Determine time in force for limit orders
+        let time_in_force = match order_type {
+            crate::types::OrderType::Limit => Some("GTC"),
+            _ => None,
+        };
+        
+        // Create order params
+        let order_params = TestOrderParams {
+            symbol,
+            side: side_str,
+            order_type: order_type_str,
+            quantity: Some(&qty_str),
+            price: price_str.as_deref(),
+            time_in_force,
+            stop_price: None,
+            iceberg_qty: None,
+        };
+        
+        self.new_order(&order_params).await
+    }
+
     /// Cancel an existing order
     pub async fn cancel_order(&self, symbol: &str, order_id: u64) -> Result<CancelOrderResponse> {
         let endpoint = "/api/v3/order";
@@ -363,6 +448,175 @@ impl BinanceRestClient {
         
         serde_json::from_value(response)
             .map_err(|e| ExchangeError::SerializationError(e.to_string()))
+    }
+
+    /// Get all orders (active, canceled, or filled) for a symbol
+    /// 
+    /// # Arguments
+    /// * `symbol` - Trading pair (e.g., "BTCUSDT")
+    /// * `limit` - Limit the results (default 500, max 1000)
+    /// * `start_time` - Oldest order timestamp to fetch (optional)
+    /// * `end_time` - Most recent order timestamp to fetch (optional)
+    /// 
+    /// # Example
+    /// ```rust
+    /// // Get last 100 orders
+    /// let orders = client.get_all_orders("BTCUSDT", Some(100), None, None).await?;
+    /// 
+    /// // Get orders from last 24 hours
+    /// let start = nanos() / 1_000_000 - 24 * 60 * 60 * 1000;
+    /// let orders = client.get_all_orders("BTCUSDT", None, Some(start), None).await?;
+    /// ```
+    pub async fn get_all_orders(
+        &self,
+        symbol: &str,
+        limit: Option<u32>,
+        start_time: Option<u64>,
+        end_time: Option<u64>,
+    ) -> Result<Vec<QueryOrderResponse>> {
+        let endpoint = "/api/v3/allOrders";
+        let timer = PerfTimer::start("binance_get_all_orders".to_string());
+        
+        let mut params = HashMap::new();
+        params.insert("symbol", symbol);
+        
+        // Convert numeric parameters to strings
+        let limit_str = limit.map(|l| l.to_string());
+        let start_time_str = start_time.map(|t| t.to_string());
+        let end_time_str = end_time.map(|t| t.to_string());
+        
+        if let Some(ref l) = limit_str {
+            params.insert("limit", l);
+        }
+        if let Some(ref st) = start_time_str {
+            params.insert("startTime", st);
+        }
+        if let Some(ref et) = end_time_str {
+            params.insert("endTime", et);
+        }
+        
+        let response = self.signed_request(endpoint, "GET", Some(params)).await?;
+        
+        timer.log_elapsed();
+        
+        serde_json::from_value(response)
+            .map_err(|e| ExchangeError::SerializationError(e.to_string()))
+    }
+
+    /// Get trades for a specific order
+    /// 
+    /// # Arguments
+    /// * `symbol` - Trading pair (e.g., "BTCUSDT")
+    /// * `order_id` - The order ID to get trades for
+    /// 
+    /// # Example
+    /// ```rust
+    /// let trades = client.get_order_trades("BTCUSDT", 12345678).await?;
+    /// for trade in trades {
+    ///     println!("Trade {} - Price: {} Qty: {} Fee: {} {}",
+    ///         trade.id, trade.price, trade.qty, 
+    ///         trade.commission, trade.commission_asset);
+    /// }
+    /// ```
+    pub async fn get_order_trades(&self, symbol: &str, order_id: u64) -> Result<Vec<MyTradeResponse>> {
+        let endpoint = "/api/v3/myTrades";
+        let timer = PerfTimer::start("binance_get_order_trades".to_string());
+        
+        let order_id_str = order_id.to_string();
+        let mut params = HashMap::new();
+        params.insert("symbol", symbol);
+        params.insert("orderId", &order_id_str);
+        
+        let response = self.signed_request(endpoint, "GET", Some(params)).await?;
+        
+        timer.log_elapsed();
+        
+        serde_json::from_value(response)
+            .map_err(|e| ExchangeError::SerializationError(e.to_string()))
+    }
+
+    /// Get historical klines/candlestick data
+    /// 
+    /// # Arguments
+    /// * `symbol` - Trading pair (e.g., "BTCUSDT")
+    /// * `interval` - Kline interval (1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M)
+    /// * `start_time` - Start time in milliseconds (optional)
+    /// * `end_time` - End time in milliseconds (optional)
+    /// * `limit` - Number of klines to return (default 500, max 1000)
+    /// 
+    /// # Example
+    /// ```rust
+    /// // Get last 100 1-hour candles
+    /// let klines = client.get_klines("BTCUSDT", "1h", None, None, Some(100)).await?;
+    /// 
+    /// // Get candles for specific time range
+    /// let start = nanos() / 1_000_000 - 24 * 60 * 60 * 1000; // 24 hours ago
+    /// let end = nanos() / 1_000_000;
+    /// let klines = client.get_klines("BTCUSDT", "5m", Some(start), Some(end), None).await?;
+    /// ```
+    pub async fn get_klines(
+        &self,
+        symbol: &str,
+        interval: &str,
+        start_time: Option<u64>,
+        end_time: Option<u64>,
+        limit: Option<u32>,
+    ) -> Result<Vec<crate::binance::types::BinanceKline>> {
+        let endpoint = "/api/v3/klines";
+        let timer = PerfTimer::start("binance_get_klines".to_string());
+        
+        let mut params = vec![
+            ("symbol", symbol),
+            ("interval", interval),
+        ];
+        
+        // Convert numeric parameters to strings
+        let start_time_str = start_time.map(|t| t.to_string());
+        let end_time_str = end_time.map(|t| t.to_string());
+        let limit_str = limit.map(|l| l.to_string());
+        
+        // Add optional parameters
+        if let Some(ref st) = start_time_str {
+            params.push(("startTime", st));
+        }
+        if let Some(ref et) = end_time_str {
+            params.push(("endTime", et));
+        }
+        if let Some(ref l) = limit_str {
+            params.push(("limit", l));
+        }
+        
+        let response = self.get_request(endpoint, Some(params)).await?;
+        
+        timer.log_elapsed();
+        
+        // The response is an array of arrays, need to deserialize as Vec<Vec<Value>> first
+        let raw_klines: Vec<Vec<serde_json::Value>> = serde_json::from_value(response)
+            .map_err(|e| ExchangeError::SerializationError(e.to_string()))?;
+        
+        // Convert to BinanceKline structs
+        let mut klines = Vec::with_capacity(raw_klines.len());
+        for raw_kline in raw_klines {
+            if raw_kline.len() >= 12 {
+                let kline = crate::binance::types::BinanceKline {
+                    open_time: raw_kline[0].as_u64().unwrap_or(0),
+                    open: raw_kline[1].as_str().unwrap_or("0").to_string(),
+                    high: raw_kline[2].as_str().unwrap_or("0").to_string(),
+                    low: raw_kline[3].as_str().unwrap_or("0").to_string(),
+                    close: raw_kline[4].as_str().unwrap_or("0").to_string(),
+                    volume: raw_kline[5].as_str().unwrap_or("0").to_string(),
+                    close_time: raw_kline[6].as_u64().unwrap_or(0),
+                    quote_asset_volume: raw_kline[7].as_str().unwrap_or("0").to_string(),
+                    number_of_trades: raw_kline[8].as_u64().unwrap_or(0) as u32,
+                    taker_buy_base_asset_volume: raw_kline[9].as_str().unwrap_or("0").to_string(),
+                    taker_buy_quote_asset_volume: raw_kline[10].as_str().unwrap_or("0").to_string(),
+                    ignore: raw_kline[11].as_str().unwrap_or("0").to_string(),
+                };
+                klines.push(kline);
+            }
+        }
+        
+        Ok(klines)
     }
 
     /// Create a listen key for user data stream
